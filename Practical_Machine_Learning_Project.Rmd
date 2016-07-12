@@ -1,0 +1,184 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Sergios Koutavidis"
+date: "11 July 2016"
+output: html_document
+---
+
+```{r setup, warning=FALSE, comment=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Practical Machine Learning Project : Course Project
+
+#Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+#Data
+The training data for this project are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+
+The data for this project come from this source: <http://groupware.les.inf.puc-rio.br/har>
+
+#Goal
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+#Libraries and set up
+
+```{r lib,warning=FALSE, comment=FALSE}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+library(plyr)
+
+set.seed(10000)
+```
+
+##Downloading and getting the data 
+
+
+
+```{r loading}
+
+URL_train <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+URL_test <-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+Read_train <- read.csv(url(URL_train))
+Read_test <- read.csv(url(URL_test))
+
+inTrain  <- createDataPartition(Read_train$classe, p=0.7, list=FALSE)
+Dataset_Traning <- Read_train[inTrain, ]
+Dataset_Test  <- Read_train[-inTrain, ]
+```
+
+## Data cleansing
+
+You can also embed plots, for example:
+
+```{r pressure,message=FALSE}
+Null <- nearZeroVar(Dataset_Traning)
+Dataset_Traning <- Dataset_Traning[, -Null]
+Dataset_Test  <- Dataset_Test[, -Null]
+
+AllNull    <- sapply(Dataset_Traning, function(x) mean(is.na(x))) > 0.95
+Dataset_Traning <- Dataset_Traning[,  AllNull==FALSE]
+Dataset_Test <- Dataset_Test[,  AllNull==FALSE]
+
+# Review columns 1-5 (x,user_name,raw_timestamp_part_1,raw_timestamp_part_2,cvtd_timestamp)
+head(Dataset_Traning) [,  (1:5)]
+head(Dataset_Test) [,  (1:5)]
+
+#Remove them 
+Dataset_Traning <- Dataset_Traning[,  -(1:5)]
+Dataset_Test <- Dataset_Test[,  -(1:5)]
+
+#Number of dimensions (54)
+ dim(Dataset_Traning)
+ dim(Dataset_Test)
+```
+
+
+
+```{r corr}
+correlation <- cor(Dataset_Traning[, -54])
+ corrplot(correlation, order = "FPC", method = "color", type = "lower", 
+        tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+
+```
+
+##Prediction models 
+
+#Decision Tree
+
+```{r decision}
+#Training Set
+Decision_Tree <- rpart(classe ~ ., Dataset_Traning, method="class")
+fancyRpartPlot(Decision_Tree)
+
+
+```
+
+
+
+
+```{r decision_test}
+#Test Set
+Decision_Tree_Test <- rpart(classe ~ ., Dataset_Traning, method="class")
+predictDecTree <- predict(Decision_Tree, newdata=Dataset_Test, type="class")
+Confusion_matrix <- confusionMatrix(predictDecTree, Dataset_Test$classe)
+Confusion_matrix
+```
+
+
+```{r plot1}
+plot(Confusion_matrix$table, col = heat.colors(5), 
+      main = paste("Decision Tree - Accuracy =",
+                  round(Confusion_matrix$overall['Accuracy'], 4)))
+
+```
+
+#Random Forest
+
+```{r decision_test3}
+Random_Forest_model <- trainControl(method="cv", number=3, verboseIter=FALSE)
+Random_Forest_Test <- train(classe ~ ., data=Dataset_Test, method="rf",
+                          trControl=Random_Forest_model)
+Random_Forest_Test$finalModel
+
+Random_Forect_Predict <- predict(Random_Forest_Test, newdata=Dataset_Test)
+Confusion_matrix_RF <- confusionMatrix(Random_Forect_Predict, Dataset_Test$classe)
+Confusion_matrix_RF
+```
+
+```{r plot2}
+plot(Confusion_matrix_RF$table, col =  heat.colors(5), 
+     main = paste("Random Forest - Accuracy =",
+                  round(Confusion_matrix_RF$overall['Accuracy'], 4)))
+
+```
+
+#Generalized Boosted Model
+```{r decision_test1}
+GBM_model <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+GBM_Test <- train(classe ~ ., data=Dataset_Test, method = "gbm",
+                    trControl = GBM_model, verbose = FALSE)
+GBM_Test$finalModel
+
+GBM_Predict <- predict(GBM_Test, newdata=Dataset_Test)
+Confusion_matrix_GBM <- confusionMatrix(GBM_Predict, Dataset_Test$classe)
+Confusion_matrix_GBM
+```
+
+
+```{r plot3}
+plot(Confusion_matrix_GBM$table, col =  heat.colors(5), 
+     main = paste("Generalized Boosted Model - Accuracy =",
+                  round(Confusion_matrix_GBM$overall['Accuracy'], 4)))
+
+```
+
+#Verdict
+Following the results of the above regression models :
+
+1.Decision Tree = 73,41%
+2.Random Forest = 100%
+3. Generalized Boosted Model = 99,42%
+
+Random Forest Model will be selected to be applied to predict these quiz results as shown below
+
+```{r results}
+predict <- predict(Random_Forest_Test, newdata=Read_test)
+predict
+```
+
+
